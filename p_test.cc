@@ -72,7 +72,7 @@ int main(int argc, char *argv[])
             break;
         case '?':
         default:
-            cerr << "p_test [rt] <file>" << endl;
+            cerr << "p_test [-t(hreads)T(ime)m(essages)] [-r <reps>] [-o <out>] <file>" << endl;
             return 1;
         }
     }
