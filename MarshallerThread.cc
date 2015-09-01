@@ -34,7 +34,8 @@
 #include <sstream>
 
 #include <sys/time.h>
-#include <ctime>
+#include <fcntl.h>
+#include <unistd.h>
 
 #include "MarshallerThread.h"
 #include "Error.h"
@@ -121,11 +122,27 @@ MarshallerThread::~MarshallerThread()
 }
 
 // not a static method
+/**
+ * Start the child thread, using the arguments given. This will write 'bytes'
+ * bytes from 'byte_buf' to the output stream 'out'
+ *
+ */
 void MarshallerThread::start_thread(void* (*thread)(void *arg), ostream &out, char *byte_buf,
-    unsigned int bytes_written)
+    unsigned int bytes)
 {
     write_args *args = new write_args(d_out_mutex, d_out_cond, d_child_thread_count, d_thread_error, out, byte_buf,
-        bytes_written);
+        bytes);
+    int status = pthread_create(&d_thread, &d_thread_attr, thread, args);
+    if (status != 0) throw InternalErr(__FILE__, __LINE__, "Could not start child thread");
+}
+
+/**
+ * Write 'bytes' bytes from 'byte_buf' to the file descriptor 'fd'.
+ */
+void MarshallerThread::start_thread(void* (*thread)(void *arg), int fd, char *byte_buf, unsigned int bytes)
+{
+    write_args *args = new write_args(d_out_mutex, d_out_cond, d_child_thread_count, d_thread_error, fd, byte_buf,
+        bytes);
     int status = pthread_create(&d_thread, &d_thread_attr, thread, args);
     if (status != 0) throw InternalErr(__FILE__, __LINE__, "Could not start child thread");
 }
@@ -187,12 +204,19 @@ MarshallerThread::write_thread(void *arg)
     struct timeval tp_s;
     if (print_time && gettimeofday(&tp_s, 0) != 0) cerr << "could not read time" << endl;
 
-    args->d_out.write(args->d_buf, args->d_num);
-    if (args->d_out.fail()) {
-        ostringstream oss;
-        oss << "Could not write data: " << __FILE__ << ":" << __LINE__;
-        args->d_error = oss.str();
-        return (void*) -1;
+    if (args->d_out_file != -1) {
+        int bytes_written = write(args->d_out_file, args->d_buf, args->d_num);
+        if (bytes_written != args->d_num)
+            return (void*) -1;
+    }
+    else {
+        args->d_out.write(args->d_buf, args->d_num);
+        if (args->d_out.fail()) {
+            ostringstream oss;
+            oss << "Could not write data: " << __FILE__ << ":" << __LINE__;
+            args->d_error = oss.str();
+            return (void*) -1;
+        }
     }
 
     delete args->d_buf;

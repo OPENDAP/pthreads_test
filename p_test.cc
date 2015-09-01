@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/time.h>
 
@@ -110,7 +111,11 @@ int main(int argc, char *argv[])
         outfile = infile;
         outfile.append(".out");
     }
+
+#if 0
     ofstream out(outfile.c_str(), ios::out);
+#endif
+    int out_file = open(outfile.c_str(), O_WRONLY|O_CREAT);
 
     for (int i = 0; i < repetitions; ++i) {
         {
@@ -119,9 +124,14 @@ int main(int argc, char *argv[])
 
             struct timeval tp_s;
             if (print_time && gettimeofday(&tp_s, 0) != 0) cerr << "could not read time" << endl;
-
+#if 0
             ifstream in(infile.c_str(), ios::in);
             in.read(&buf[0], bytes);
+#endif
+            int in_file = open(infile.c_str(), O_RDONLY);
+            int bytes_read = read(in_file, &buf[0], bytes);
+            if (bytes_read != bytes)
+                cerr << "error reading bytes using file descriptor" << endl;
 
             struct timeval tp_e;
             if (print_time) {
@@ -144,7 +154,10 @@ int main(int argc, char *argv[])
                 Locker lock(mt->get_mutex(), mt->get_cond(), mt->get_child_thread_count());
                 mt->increment_child_thread_count();
                 // thread deletes tmp
+#if 0
                 mt->start_thread(libdap::MarshallerThread::write_thread, out, tmp, bytes);
+#endif
+                mt->start_thread(libdap::MarshallerThread::write_thread, out_file, tmp, bytes);
 
                 struct timeval tp_e;
                 if (print_time) {
@@ -159,7 +172,13 @@ int main(int argc, char *argv[])
                 struct timeval tp_s;
                 if (print_time && gettimeofday(&tp_s, 0) != 0) cerr << "could not read time" << endl;
 
+#if 0
                 out.write(tmp, bytes);
+#endif
+                int bytes_written = write(out_file, tmp, bytes);
+                if (bytes_written != bytes)
+                    cerr << "error writing bytes using a file descriptor" << endl;
+
                 delete tmp;
                 tmp = 0;
 

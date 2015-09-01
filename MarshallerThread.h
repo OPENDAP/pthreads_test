@@ -35,6 +35,7 @@
 
 #include <pthread.h>
 
+#include <iostream>
 #include <ostream>
 #include <string>
 
@@ -81,14 +82,27 @@ private:
         int &d_count;
         std::string &d_error;
         std::ostream &d_out;     // The output stream protected by the mutex, ...
+        int d_out_file;       // file descriptor; if not -1, use this.
         char *d_buf;        // The data to write to the stream
         int d_num;          // The size of d_buf
 
+        /**
+         * Build args for an ostream. The file descriptor is set to -1
+         */
         write_args(pthread_mutex_t &m, pthread_cond_t &c, int &count, std::string &e, std::ostream &s, char *vals, int num) :
-            d_mutex(m), d_cond(c), d_count(count), d_error(e), d_out(s), d_buf(vals), d_num(num)
+            d_mutex(m), d_cond(c), d_count(count), d_error(e), d_out(s), d_out_file(-1), d_buf(vals), d_num(num)
         {
         }
-    };
+
+        /**
+         * Build args for a file descriptr. The ostream is set to cerr (because it is
+         * a reference and has to be initialized to something).
+         */
+        write_args(pthread_mutex_t &m, pthread_cond_t &c, int &count, std::string &e, int fd, char *vals, int num) :
+            d_mutex(m), d_cond(c), d_count(count), d_error(e), d_out(std::cerr), d_out_file(fd), d_buf(vals), d_num(num)
+        {
+        }
+   };
 
 public:
     MarshallerThread();
@@ -101,6 +115,7 @@ public:
     void increment_child_thread_count() { ++d_child_thread_count; }
 
     void start_thread(void* (*thread)(void *arg), std::ostream &out, char *byte_buf, unsigned int bytes_written);
+    void start_thread(void* (*thread)(void *arg), int fd, char *byte_buf, unsigned int bytes_written);
 
     // These three are static so that we can use them in write_thread, ...
     static bool lock_thread(write_args *args);
