@@ -11,7 +11,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/stat.h>
-#include <sys/resource.h>
+#include <sys/time.h>
 
 #include <iostream>
 #include <vector>
@@ -24,10 +24,29 @@
 using namespace std;
 using namespace libdap;
 
-double clock_diff_to_hundredths(long clock_diff)
+#undef TIME 
+#define MSG(x)
+//#define MSG(x) do { x; } while(false)
+
+double time_diff_to_hundredths(struct timeval *stop, struct timeval *start)
 {
-    const unsigned int hundredths = CLOCKS_PER_SEC / 100;
-    return double(clock_diff) / hundredths;
+  /* Perform the carry for the later subtraction by updating y. */
+  if( stop->tv_usec < start->tv_usec )
+    {
+      int nsec = (start->tv_usec - stop->tv_usec) / 1000000 + 1 ;
+      start->tv_usec -= 1000000 * nsec ;
+      start->tv_sec += nsec ;
+    }
+  if( stop->tv_usec - start->tv_usec > 1000000 )
+    {
+      int nsec = (start->tv_usec - stop->tv_usec) / 1000000 ;
+      start->tv_usec += 1000000 * nsec ;
+      start->tv_sec -= nsec ;
+    }
+
+  double result =  stop->tv_sec - start->tv_sec;
+  result += (stop->tv_usec - start->tv_usec) / 1000000;
+  return result;
 }
 
 int
@@ -79,7 +98,6 @@ main(int argc, char *argv[])
     vector<char> buf(bytes+1);
 
     MarshallerThread *mt = new MarshallerThread();
-    
 
     // To simulate the open stream/network, open once.
     string outfile = infile;
@@ -89,15 +107,21 @@ main(int argc, char *argv[])
     for (int i = 0; i < repetitions; ++i) {
         {
             // to simulate our problem, open and read for each iteration
-            cerr << "open and read..." << endl;
-
-            std::clock_t const start = std::clock();
-
+  	    MSG(cerr << "open and read..." << endl);
+#if TIME
+	    struct timeval tp_s;
+	    if (gettimeofday(&tp_s, 0) != 0)
+	      cerr << "could not read time" << endl;
+#endif
             ifstream in(infile.c_str(), ios::in);
             in.read(&buf[0], bytes);
+#if TIME
+	    struct timeval tp_e;
+	    if (gettimeofday(&tp_e, 0) != 0)
+	      cerr << "could not read time" << endl;
 
-            std::clock_t const end = std::clock();
-            cerr << "time to read: " << clock_diff_to_hundredths(end - start) << endl;
+	    cerr << "time to read: " << time_diff_to_hundredths(&tp_e, &tp_s) << endl;
+#endif
         }
 
         {
@@ -105,23 +129,40 @@ main(int argc, char *argv[])
             memcpy(tmp, &buf[0], bytes);
 
             if (threads) {
-                cerr << "writing using a child thread..." << endl;
-
+	        MSG(cerr << "writing using a child thread..." << endl);
+#if TIME
+		struct timeval tp_s;
+		if (gettimeofday(&tp_s, 0) != 0)
+		    cerr << "could not read time" << endl;
+#endif
                 Locker lock(mt->get_mutex(), mt->get_cond(), mt->get_child_thread_count());
                 mt->increment_child_thread_count();
                 // thread deletes tmp
                 mt->start_thread(libdap::MarshallerThread::write_thread, out, tmp, bytes);
+#if TIME
+		struct timeval tp_e;
+		if (gettimeofday(&tp_e, 0) != 0)
+		   cerr << "could not read time" << endl;
+
+		cerr << "time to start thread: " << time_diff_to_hundredths(&tp_e, &tp_s) << endl;
+#endif
             }
             else {
-                cerr << "writing sequentially..." << endl;
-
-                std::clock_t const start = std::clock();
-
+	        MSG(cerr << "writing sequentially..." << endl);
+#if TIME
+		struct timeval tp_s;
+		if (gettimeofday(&tp_s, 0) != 0)
+		    cerr << "could not read time" << endl;
+#endif
                 out.write(tmp, bytes);
                 delete tmp; tmp = 0;
+#if TIME
+		struct timeval tp_e;
+		if (gettimeofday(&tp_e, 0) != 0)
+		    cerr << "could not read time" << endl;
 
-                std::clock_t const end = std::clock();
-                cerr << "time to write: " << clock_diff_to_hundredths(end - start) << endl;
+		cerr << "time to write: " << time_diff_to_hundredths(&tp_e, &tp_s) << endl;
+#endif
             }
         }
     }
