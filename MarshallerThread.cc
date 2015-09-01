@@ -1,4 +1,3 @@
-
 // -*- mode: c++; c-basic-offset:4 -*-
 
 // This file is part of libdap, A C++ implementation of the OPeNDAP Data
@@ -31,7 +30,6 @@
  */
 
 //#include "config.h"
-
 #include <ostream>
 #include <sstream>
 
@@ -45,7 +43,7 @@
 using namespace libdap;
 using namespace std;
 
-extern double clock_diff_to_hundredths(long clock_diff);
+extern bool print_time;
 extern double time_diff_to_hundredths(struct timeval *stop, struct timeval *start);
 
 /**
@@ -75,7 +73,8 @@ Locker::Locker(pthread_mutex_t &lock, pthread_cond_t &cond, int &count) :
  * helps ensure that the mutex is unlocked no matter how the
  * child thread is exited.
  */
-Locker::Locker(pthread_mutex_t &lock) : m_mutex(lock)
+Locker::Locker(pthread_mutex_t &lock) :
+    m_mutex(lock)
 {
     int status = pthread_mutex_lock(&m_mutex);
     if (status != 0) throw InternalErr(__FILE__, __LINE__, "Could not lock m_mutex");
@@ -90,9 +89,10 @@ Locker::~Locker()
     if (status != 0) throw InternalErr(__FILE__, __LINE__, "Could not unlock m_mutex");
 }
 
-MarshallerThread::MarshallerThread(): d_thread(0), d_child_thread_count(0)
+MarshallerThread::MarshallerThread() :
+    d_thread(0), d_child_thread_count(0)
 {
-    if (pthread_attr_init(&d_thread_attr) != 0)  throw Error("Failed to initialize pthread attributes.");
+    if (pthread_attr_init(&d_thread_attr) != 0) throw Error("Failed to initialize pthread attributes.");
     if (pthread_attr_setdetachstate(&d_thread_attr, PTHREAD_CREATE_DETACHED /*PTHREAD_CREATE_JOINABLE*/) != 0)
         throw Error("Failed to complete pthread attribute initialization.");
 
@@ -108,7 +108,8 @@ MarshallerThread::~MarshallerThread()
         status = pthread_cond_wait(&d_out_cond, &d_out_mutex);
         if (status != 0) throw InternalErr(__FILE__, __LINE__, "Could not wait on m_cond");
     }
-    if (d_child_thread_count != 0) throw InternalErr(__FILE__, __LINE__, "FAIL: left m_cond wait with non-zero child thread count");
+    if (d_child_thread_count != 0)
+        throw InternalErr(__FILE__, __LINE__, "FAIL: left m_cond wait with non-zero child thread count");
 
     status = pthread_mutex_unlock(&d_out_mutex);
     if (status != 0) throw InternalErr(__FILE__, __LINE__, "Could not unlock m_mutex");
@@ -120,12 +121,13 @@ MarshallerThread::~MarshallerThread()
 }
 
 // not a static method
-void MarshallerThread::start_thread(void* (*thread)(void *arg), ostream &out, char *byte_buf, unsigned int bytes_written)
+void MarshallerThread::start_thread(void* (*thread)(void *arg), ostream &out, char *byte_buf,
+    unsigned int bytes_written)
 {
-    write_args *args = new write_args(d_out_mutex, d_out_cond, d_child_thread_count, d_thread_error, out, byte_buf, bytes_written);
+    write_args *args = new write_args(d_out_mutex, d_out_cond, d_child_thread_count, d_thread_error, out, byte_buf,
+        bytes_written);
     int status = pthread_create(&d_thread, &d_thread_attr, thread, args);
-    if (status != 0)
-        throw InternalErr(__FILE__, __LINE__, "Could not start child thread");
+    if (status != 0) throw InternalErr(__FILE__, __LINE__, "Could not start child thread");
 }
 
 // below this point, all of these are static methods. These three are all
@@ -182,35 +184,31 @@ MarshallerThread::write_thread(void *arg)
 
     Locker lock(args->d_mutex); // RAII; will unlock on exit
 
-#if TIME
     struct timeval tp_s;
-    if (gettimeofday(&tp_s, 0) != 0)
-        cerr << "could not read time" << endl;
-#endif
+    if (print_time && gettimeofday(&tp_s, 0) != 0) cerr << "could not read time" << endl;
 
     args->d_out.write(args->d_buf, args->d_num);
     if (args->d_out.fail()) {
         ostringstream oss;
         oss << "Could not write data: " << __FILE__ << ":" << __LINE__;
         args->d_error = oss.str();
-        return (void*)-1;
+        return (void*) -1;
     }
 
     delete args->d_buf;
 
     args->d_count = 0;
 
-    if (!signal_thread(args)) return (void*)-1;
+    if (!signal_thread(args)) return (void*) -1;
 
     delete args;
 
-#if TIME
     struct timeval tp_e;
-    if (gettimeofday(&tp_e, 0) != 0)
-        cerr << "could not read time" << endl;
+    if (print_time) {
+        if (gettimeofday(&tp_e, 0) != 0) cerr << "could not read time" << endl;
 
-    cerr << "time for child thread write: " << time_diff_to_hundredths(&tp_e, &tp_s) << endl;
-#endif
+        cerr << "time for child thread write: " << time_diff_to_hundredths(&tp_e, &tp_s) << endl;
+    }
 
     return 0;
 }
@@ -237,14 +235,14 @@ MarshallerThread::write_thread_part(void *arg)
         ostringstream oss;
         oss << "Could not write data: " << __FILE__ << ":" << __LINE__;
         args->d_error = oss.str();
-        return (void*)-1;
+        return (void*) -1;
     }
 
     delete args->d_buf;
 
     args->d_count = 0;
 
-    if (!signal_thread(args)) return (void*)-1;
+    if (!signal_thread(args)) return (void*) -1;
 
     delete args;
 

@@ -17,7 +17,6 @@
 #include <vector>
 #include <fstream>
 #include <sstream>
-#include <ctime>
 
 #include "MarshallerThread.h"
 
@@ -39,15 +38,17 @@ double time_diff_to_hundredths(struct timeval *stop, struct timeval *start)
     }
 
     double result = stop->tv_sec - start->tv_sec;
-    result += (stop->tv_usec - start->tv_usec) / 1000000;
+    result += double(stop->tv_usec - start->tv_usec) / 1000000;
     return result;
 }
+
+bool print_time = false;  // also used in MarshallerThread
 
 int main(int argc, char *argv[])
 {
     int repetitions = 1;
     bool threads = false;
-    bool time = false;
+    //bool time = false;
     bool messages = false;
     string outfile = "";
     char ch;
@@ -58,7 +59,7 @@ int main(int argc, char *argv[])
             threads = true;
             break;
         case 'T':
-            time = true;
+            print_time = true;
             break;
         case 'm':
             messages = true;
@@ -106,7 +107,7 @@ int main(int argc, char *argv[])
 
     // To simulate the open stream/network, open once.
     if (outfile.empty()) {
-        string outfile = infile;
+        outfile = infile;
         outfile.append(".out");
     }
     ofstream out(outfile.c_str(), ios::out);
@@ -117,13 +118,13 @@ int main(int argc, char *argv[])
             if (messages) cerr << "open and read..." << endl;
 
             struct timeval tp_s;
-            if (time && gettimeofday(&tp_s, 0) != 0) cerr << "could not read time" << endl;
+            if (print_time && gettimeofday(&tp_s, 0) != 0) cerr << "could not read time" << endl;
 
             ifstream in(infile.c_str(), ios::in);
             in.read(&buf[0], bytes);
 
             struct timeval tp_e;
-            if (time) {
+            if (print_time) {
                 if (gettimeofday(&tp_e, 0) != 0) cerr << "could not read time" << endl;
 
                 cerr << "time to read: " << time_diff_to_hundredths(&tp_e, &tp_s) << endl;
@@ -138,7 +139,7 @@ int main(int argc, char *argv[])
                 if (messages) cerr << "writing using a child thread..." << endl;
 
                 struct timeval tp_s;
-                if (time && gettimeofday(&tp_s, 0) != 0) cerr << "could not read time" << endl;
+                if (print_time && gettimeofday(&tp_s, 0) != 0) cerr << "could not read time" << endl;
 
                 Locker lock(mt->get_mutex(), mt->get_cond(), mt->get_child_thread_count());
                 mt->increment_child_thread_count();
@@ -146,7 +147,7 @@ int main(int argc, char *argv[])
                 mt->start_thread(libdap::MarshallerThread::write_thread, out, tmp, bytes);
 
                 struct timeval tp_e;
-                if (time) {
+                if (print_time) {
                     if (gettimeofday(&tp_e, 0) != 0) cerr << "could not read time" << endl;
 
                     cerr << "time to fork thread: " << time_diff_to_hundredths(&tp_e, &tp_s) << endl;
@@ -156,14 +157,14 @@ int main(int argc, char *argv[])
                 if (messages) cerr << "writing sequentially..." << endl;
 
                 struct timeval tp_s;
-                if (time && gettimeofday(&tp_s, 0) != 0) cerr << "could not read time" << endl;
+                if (print_time && gettimeofday(&tp_s, 0) != 0) cerr << "could not read time" << endl;
 
                 out.write(tmp, bytes);
                 delete tmp;
                 tmp = 0;
 
                 struct timeval tp_e;
-                if (time) {
+                if (print_time) {
                     if (gettimeofday(&tp_e, 0) != 0) cerr << "could not read time" << endl;
 
                     cerr << "time to write: " << time_diff_to_hundredths(&tp_e, &tp_s) << endl;
