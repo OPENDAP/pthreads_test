@@ -7,20 +7,28 @@
 
 #include "config.h"
 
-#include <sys/stat.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/stat.h>
+#include <sys/resource.h>
 
 #include <iostream>
 #include <vector>
 #include <fstream>
 #include <sstream>
+#include <ctime>
 
 #include "MarshallerThread.h"
 
 using namespace std;
 using namespace libdap;
+
+double clock_diff_to_hundredths(long clock_diff)
+{
+    const unsigned int hundredths = CLOCKS_PER_SEC / 100;
+    return double(clock_diff) / hundredths;
+}
 
 int
 main(int argc, char *argv[])
@@ -72,14 +80,6 @@ main(int argc, char *argv[])
 
     MarshallerThread *mt = new MarshallerThread();
     
-    struct rusage start_usage;
-    if( getrusage(RUSAGE_SELF, &start_usage) != 0 ) {
-        cerr << "could not get initial time information"
-	return 1;
-    }
-
-    struct timeval &start = start_usage.ru_utime ;
-    double starttime =  start.tv_sec*1000.0 + start.tv_usec/1000.0;
 
     // To simulate the open stream/network, open once.
     string outfile = infile;
@@ -91,8 +91,13 @@ main(int argc, char *argv[])
             // to simulate our problem, open and read for each iteration
             cerr << "open and read..." << endl;
 
+            std::clock_t const start = std::clock();
+
             ifstream in(infile.c_str(), ios::in);
             in.read(&buf[0], bytes);
+
+            std::clock_t const end = std::clock();
+            cerr << "time to read: " << clock_diff_to_hundredths(end - start) << endl;
         }
 
         {
@@ -110,8 +115,13 @@ main(int argc, char *argv[])
             else {
                 cerr << "writing sequentially..." << endl;
 
+                std::clock_t const start = std::clock();
+
                 out.write(tmp, bytes);
                 delete tmp; tmp = 0;
+
+                std::clock_t const end = std::clock();
+                cerr << "time to write: " << clock_diff_to_hundredths(end - start) << endl;
             }
         }
     }
