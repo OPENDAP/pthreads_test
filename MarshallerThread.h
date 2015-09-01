@@ -50,6 +50,7 @@ namespace libdap {
 class Locker {
 public:
     Locker(pthread_mutex_t &lock, pthread_cond_t &cond, int &count);
+    Locker(pthread_mutex_t &lock);
     virtual ~Locker();
 
 private:

@@ -93,6 +93,7 @@ main(int argc, char *argv[])
 
                 Locker lock(mt->get_mutex(), mt->get_cond(), mt->get_child_thread_count());
                 mt->increment_child_thread_count();
+                // thread deletes tmp
                 mt->start_thread(libdap::MarshallerThread::write_thread, out, tmp, bytes);
             }
             else {

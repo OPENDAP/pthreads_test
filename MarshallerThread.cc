@@ -44,8 +44,12 @@ using namespace std;
 
 /**
  * Lock the mutex then wait for the child thread to signal using the
- * condition variable 'cond'. Once the signal is received, retest count
+ * condition variable 'cond'. Once the signal is received, re-test count
  * to make sure it's zero (there are no child threads).
+ *
+ * This is used to lock the main thread and ensure that a second child
+ * (writer) thread is not started until any current child thread completes,
+ * which keeps the write operations in the correct order.
  */
 Locker::Locker(pthread_mutex_t &lock, pthread_cond_t &cond, int &count) :
     m_mutex(lock)
@@ -57,6 +61,18 @@ Locker::Locker(pthread_mutex_t &lock, pthread_cond_t &cond, int &count) :
         if (status != 0) throw InternalErr(__FILE__, __LINE__, "Could not wait on m_cond");
     }
     if (count != 0) throw InternalErr(__FILE__, __LINE__, "FAIL: left m_cond wait with non-zero child thread count");
+}
+
+/**
+ * Lock the mutex, but do not wait on the condition variable.
+ * This is used by the child thread that performs the I/O; it
+ * helps ensure that the mutex is unlocked no matter how the
+ * child thread is exited.
+ */
+Locker::Locker(pthread_mutex_t &lock) : m_mutex(lock)
+{
+    int status = pthread_mutex_lock(&m_mutex);
+    if (status != 0) throw InternalErr(__FILE__, __LINE__, "Could not lock m_mutex");
 }
 
 /**
@@ -158,14 +174,13 @@ MarshallerThread::write_thread(void *arg)
 {
     write_args *args = reinterpret_cast<write_args *>(arg);
 
-    if (!lock_thread(args)) return (void*)-1;
+    Locker lock(args->d_mutex); // RAII; will unlock on exit
 
     args->d_out.write(args->d_buf, args->d_num);
     if (args->d_out.fail()) {
         ostringstream oss;
         oss << "Could not write data: " << __FILE__ << ":" << __LINE__;
         args->d_error = oss.str();
-        cerr << "Error: " << args->d_error << endl;
         return (void*)-1;
     }
 
@@ -174,8 +189,6 @@ MarshallerThread::write_thread(void *arg)
     args->d_count = 0;
 
     if (!signal_thread(args)) return (void*)-1;
-
-    if (!unlock_thread(args)) return (void*)-1;
 
     delete args;
 
@@ -187,7 +200,7 @@ MarshallerThread::write_thread(void *arg)
  * by the ostream element of write_args. This is used by start_thread()
  * and passed to pthread_create()
  *
- * @note This differes from MarshallerThread::write_thread() in that it
+ * @note This differers from MarshallerThread::write_thread() in that it
  * writes data starting _after_ the four-byte length prefix that XDR
  * adds to the data. It is used for the put_vector_part() calls in
  * XDRStreamMarshaller.
@@ -197,7 +210,7 @@ MarshallerThread::write_thread_part(void *arg)
 {
     write_args *args = reinterpret_cast<write_args *>(arg);
 
-    if (!lock_thread(args)) return (void*)-1;
+    Locker lock(args->d_mutex); // RAII; will unlock on exit
 
     args->d_out.write(args->d_buf + 4, args->d_num);
     if (args->d_out.fail()) {
@@ -212,8 +225,6 @@ MarshallerThread::write_thread_part(void *arg)
     args->d_count = 0;
 
     if (!signal_thread(args)) return (void*)-1;
-
-    if (!unlock_thread(args)) return (void*)-1;
 
     delete args;
 
