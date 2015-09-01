@@ -7,13 +7,15 @@
 
 #include "config.h"
 
+#include <sys/stat.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+
 #include <iostream>
 #include <vector>
 #include <fstream>
 #include <sstream>
-
-#include <sys/stat.h>
-#include <unistd.h>
 
 #include "MarshallerThread.h"
 
@@ -28,18 +30,18 @@ main(int argc, char *argv[])
     char ch;
 
     while ((ch = getopt(argc, argv, "tr:")) != -1) {
-            switch (ch) {
-            case 't':
-                    threads = true;
-                    break;
-            case 'r':
-                repetitions = atoi(optarg);
-                    break;
-            case '?':
-            default:
-                    cerr << "p_test [rt] <file>" << endl;
-                    return 1;
-            }
+      switch (ch) {
+      case 't':
+	threads = true;
+	break;
+      case 'r':
+	repetitions = atoi(optarg);
+	break;
+      case '?':
+      default:
+	cerr << "p_test [rt] <file>" << endl;
+      return 1;
+      }
     }
     argc -= optind;
     argv += optind;
@@ -69,6 +71,15 @@ main(int argc, char *argv[])
     vector<char> buf(bytes+1);
 
     MarshallerThread *mt = new MarshallerThread();
+    
+    struct rusage start_usage;
+    if( getrusage(RUSAGE_SELF, &start_usage) != 0 ) {
+        cerr << "could not get initial time information"
+	return 1;
+    }
+
+    struct timeval &start = start_usage.ru_utime ;
+    double starttime =  start.tv_sec*1000.0 + start.tv_usec/1000.0;
 
     // To simulate the open stream/network, open once.
     string outfile = infile;
