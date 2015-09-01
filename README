@@ -1,0 +1,6 @@
+
+Test some pthreads issues we're seeing on linux and especially
+AWS/CentOS6.
+
+jhrg
+9/1/15
