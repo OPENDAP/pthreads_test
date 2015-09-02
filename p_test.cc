@@ -1,6 +1,15 @@
 /*
  * p_test.cc
  *
+ * Test using pthreads to double-buffer I/O. Use like this:
+ *      ./p_test -T -m -r 5 <big file> -o <output file>
+ * to test regular sequential reads and writes. Use like this:
+ *      ./p_test -t -T -m -r 5 <big file> -o <output file>
+ * to test running the calls to write() in a child thread.
+ *
+ * the options -T and -m turn on timing and 'messages'; -r N
+ * make p_test read and write <big file> N times
+ *
  *  Created on: Aug 31, 2015
  *      Author: jimg
  */
@@ -43,13 +52,11 @@ double time_diff_to_hundredths(struct timeval *stop, struct timeval *start)
     return result;
 }
 
-bool print_time = false;  // also used in MarshallerThread
-
 int main(int argc, char *argv[])
 {
     int repetitions = 1;
     bool threads = false;
-    //bool time = false;
+    bool print_time = false;
     bool messages = false;
     string outfile = "";
     char ch;
@@ -105,6 +112,8 @@ int main(int argc, char *argv[])
     vector<char> buf(bytes + 1);
 
     MarshallerThread *mt = new MarshallerThread();
+    if (print_time)
+        mt->set_print_time(true);
 
     // To simulate the open stream/network, open once.
     if (outfile.empty()) {
@@ -112,11 +121,19 @@ int main(int argc, char *argv[])
         outfile.append(".out");
     }
 
-#if 0
+#if CPP_STREAMS
     ofstream out(outfile.c_str(), ios::out);
+    if (!out || out.fail()) {
+        cerr << "Failed to open file!" << endl;
+        return 1;
+    }
+#else
+    int out_file = open(outfile.c_str(), O_WRONLY|O_CREAT|O_CLOEXEC|O_APPEND|O_TRUNC, 0664);
+    if (out_file == -1) {
+        cerr << "Failed to open file!" << endl;
+        return 1;
+    }
 #endif
-    int out_file = open(outfile.c_str(), O_WRONLY|O_CREAT);
-
     for (int i = 0; i < repetitions; ++i) {
         {
             // to simulate our problem, open and read for each iteration
@@ -124,15 +141,15 @@ int main(int argc, char *argv[])
 
             struct timeval tp_s;
             if (print_time && gettimeofday(&tp_s, 0) != 0) cerr << "could not read time" << endl;
-#if 0
+#if CPP_STREAMS
             ifstream in(infile.c_str(), ios::in);
             in.read(&buf[0], bytes);
-#endif
+#else
             int in_file = open(infile.c_str(), O_RDONLY);
             int bytes_read = read(in_file, &buf[0], bytes);
             if (bytes_read != bytes)
                 cerr << "error reading bytes using file descriptor" << endl;
-
+#endif
             struct timeval tp_e;
             if (print_time) {
                 if (gettimeofday(&tp_e, 0) != 0) cerr << "could not read time" << endl;
@@ -154,11 +171,11 @@ int main(int argc, char *argv[])
                 Locker lock(mt->get_mutex(), mt->get_cond(), mt->get_child_thread_count());
                 mt->increment_child_thread_count();
                 // thread deletes tmp
-#if 0
+#if CPP_STREAMS
                 mt->start_thread(libdap::MarshallerThread::write_thread, out, tmp, bytes);
-#endif
+#else
                 mt->start_thread(libdap::MarshallerThread::write_thread, out_file, tmp, bytes);
-
+#endif
                 struct timeval tp_e;
                 if (print_time) {
                     if (gettimeofday(&tp_e, 0) != 0) cerr << "could not read time" << endl;
@@ -172,13 +189,13 @@ int main(int argc, char *argv[])
                 struct timeval tp_s;
                 if (print_time && gettimeofday(&tp_s, 0) != 0) cerr << "could not read time" << endl;
 
-#if 0
+#if CPP_STREAMS
                 out.write(tmp, bytes);
-#endif
+#else
                 int bytes_written = write(out_file, tmp, bytes);
                 if (bytes_written != bytes)
                     cerr << "error writing bytes using a file descriptor" << endl;
-
+#endif
                 delete tmp;
                 tmp = 0;
 
@@ -193,6 +210,11 @@ int main(int argc, char *argv[])
         }
     }
 
+#if CPP_STREAMS
+    out.fclose();
+#else
+    close(out_file);
+#endif
     delete mt;
 
     return 0;
