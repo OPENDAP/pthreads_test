@@ -33,7 +33,9 @@
 using namespace std;
 using namespace libdap;
 
-double time_diff_to_hundredths(struct timeval *stop, struct timeval *start)
+//#define CPP_STREAMS 1
+
+static double time_diff_to_hundredths(struct timeval *stop, struct timeval *start)
 {
     /* Perform the carry for the later subtraction by updating y. */
     if (stop->tv_usec < start->tv_usec) {
@@ -211,7 +213,7 @@ int main(int argc, char *argv[])
     }
 
 #if CPP_STREAMS
-    out.fclose();
+    // No need to close the ofstream object
 #else
     close(out_file);
 #endif

@@ -49,8 +49,11 @@ using namespace std;
 
 bool MarshallerThread::print_time = false;
 
-//extern double time_diff_to_hundredths(struct timeval *stop, struct timeval *start);
-
+/**
+ * Use this with timeval structures returned by gettimeofday() to compute
+ * real time (instead of user time that is returned by std::clock() or
+ * get_rusage()).
+ */
 static double time_diff_to_hundredths(struct timeval *stop, struct timeval *start)
 {
     /* Perform the carry for the later subtraction by updating y. */
