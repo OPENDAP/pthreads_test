@@ -33,7 +33,7 @@
 using namespace std;
 using namespace libdap;
 
-//#define CPP_STREAMS 1
+#define CPP_STREAMS 1
 
 static double time_diff_to_hundredths(struct timeval *stop, struct timeval *start)
 {
